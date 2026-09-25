@@ -11,6 +11,8 @@ info:
 servers:
   - url: http://localhost:3000
     description: Development
+  - url: https://restaurant-application-u25e.onrender.com
+    description: Production
 
 tags:
   - name: Menu
