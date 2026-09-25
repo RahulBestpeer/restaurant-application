@@ -1,0 +1,1149 @@
+openapi: "3.0.3"
+
+info:
+  title: Restaurant API
+  version: "1.0"
+  description: |
+    REST API for the restaurant management system.
+
+    All monetary values are in **INR (₹)**. Dates use **YYYY-MM-DD**, times use **HH:MM** (24-hour).
+
+servers:
+  - url: http://localhost:3000
+    description: Development
+
+tags:
+  - name: Menu
+    description: Menu categories and items
+  - name: Reservations
+    description: Create, view, update, and cancel reservations
+  - name: Payments
+    description: Process payments for reservations
+  - name: Tables
+    description: Table listing and availability
+  - name: Events
+    description: Upcoming events
+  - name: Gallery
+    description: Photo and video gallery
+  - name: Team
+    description: Team member profiles
+  - name: Business Hours
+    description: Opening hours and date-specific overrides
+
+paths:
+
+  # ── Menu Categories ──────────────────────────────────────────────────────────
+
+  /api/v1/menu_categories:
+    get:
+      tags: [Menu]
+      summary: List menu categories
+      parameters:
+        - name: type
+          in: query
+          description: Filter by category type
+          required: false
+          schema:
+            type: string
+            enum: [food, beverage, paella, tapas]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuCategorySummary"
+              example:
+                - id: 1
+                  slug: food
+                  name: Food
+                  category_type: food
+                  display_order: 1
+                  parent_id: null
+                  subcategories:
+                    - id: 5
+                      slug: starters
+                      name: Starters
+                      category_type: food
+                      display_order: 1
+                      parent_id: 1
+                      subcategories: []
+
+  /api/v1/menu_categories/{slug}:
+    get:
+      tags: [Menu]
+      summary: Show category with all menu items
+      parameters:
+        - $ref: "#/components/parameters/slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuCategoryDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Menu Items ───────────────────────────────────────────────────────────────
+
+  /api/v1/menu_items:
+    get:
+      tags: [Menu]
+      summary: List available menu items
+      parameters:
+        - name: category
+          in: query
+          description: Filter by category slug
+          required: false
+          schema:
+            type: string
+        - name: featured
+          in: query
+          description: Return only featured items when present
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuItem"
+
+  /api/v1/menu_items/{id}:
+    get:
+      tags: [Menu]
+      summary: Show a menu item
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Reservations ─────────────────────────────────────────────────────────────
+
+  /api/v1/reservations:
+    post:
+      tags: [Reservations]
+      summary: Create a reservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationCreate"
+            examples:
+              table_booking:
+                summary: Table booking
+                value:
+                  reservation:
+                    name: "María García"
+                    email: "maria@example.com"
+                    phone: "9876543210"
+                    party_size: 2
+                    reservation_date: "2026-10-09"
+                    reservation_time: "19:00"
+                    end_time: "21:00"
+                    table_id: 1
+                    special_requests: "Window seat if possible"
+              event_booking:
+                summary: Event booking
+                value:
+                  reservation:
+                    name: "Carlos Ruiz"
+                    email: "carlos@example.com"
+                    phone: "9876543211"
+                    party_size: 2
+                    event_id: 1
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/v1/reservations/{confirmation_code}:
+    get:
+      tags: [Reservations]
+      summary: Show a reservation
+      parameters:
+        - $ref: "#/components/parameters/confirmation_code"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [Reservations]
+      summary: Update a reservation
+      description: |
+        Updates an existing reservation. Returns 422 if the reservation is
+        cancelled or already paid.
+      parameters:
+        - $ref: "#/components/parameters/confirmation_code"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reservation"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/reservations/{confirmation_code}/cancel:
+    delete:
+      tags: [Reservations]
+      summary: Cancel a reservation
+      description: |
+        Cancels the reservation. If a completed payment exists, a refund is
+        issued automatically with a 3% cancellation fee deducted. The
+        restaurant bears no fee when cancelling on behalf of the customer.
+      parameters:
+        - $ref: "#/components/parameters/confirmation_code"
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationResult"
+              example:
+                reservation:
+                  confirmation_code: "5HFFE1AR"
+                  status: cancelled
+                cancellation_fee: "90.0"
+                refund_amount: "2910.0"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Payments ─────────────────────────────────────────────────────────────────
+
+  /api/v1/reservations/{confirmation_code}/payment:
+    post:
+      tags: [Payments]
+      summary: Pay for a reservation
+      description: |
+        Creates a payment and immediately completes it (no external provider).
+        Sets reservation status to **confirmed**.
+
+        - `full` — charges the full `total_amount` of the reservation.
+        - `deposit` — charges 10% of `total_amount`.
+
+        Returns 422 if the reservation is cancelled, already paid, or has no
+        calculable amount.
+      parameters:
+        - $ref: "#/components/parameters/confirmation_code"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_type:
+                  type: string
+                  enum: [full, deposit]
+                  default: full
+            example:
+              payment_type: full
+      responses:
+        "201":
+          description: Payment completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+              example:
+                id: 11
+                reservation_id: 11
+                amount: "3000.0"
+                currency: INR
+                status: completed
+                payment_type: full
+                paid_at: "2026-09-25T09:58:50.521+02:00"
+                refunded_amount: null
+                refunded_at: null
+                transactions:
+                  - id: 5
+                    payment_id: 11
+                    amount: "3000.0"
+                    currency: INR
+                    status: completed
+                    completed_at: "2026-09-25T09:58:50.519+02:00"
+                    failed_at: null
+                    created_at: "2026-09-25T09:58:50.517+02:00"
+                created_at: "2026-09-25T09:58:50.514+02:00"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Tables ───────────────────────────────────────────────────────────────────
+
+  /api/v1/tables:
+    get:
+      tags: [Tables]
+      summary: List all active tables
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+
+  /api/v1/tables/available:
+    get:
+      tags: [Tables]
+      summary: List tables with booking price for a given slot
+      description: |
+        Returns all active tables with sufficient capacity, each annotated with
+        the `booking_price` for the requested duration.
+
+        Note: conflict checking against existing reservations happens at
+        reservation-creation time, not here.
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-10-09"
+        - name: start_time
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{2}:\d{2}$'
+          example: "19:00"
+        - name: end_time
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{2}:\d{2}$'
+          example: "21:00"
+        - name: party_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableAvailability"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ── Events ───────────────────────────────────────────────────────────────────
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      summary: List upcoming events
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventSummary"
+
+  /api/v1/events/{id}:
+    get:
+      tags: [Events]
+      summary: Show an event with full description
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Gallery ──────────────────────────────────────────────────────────────────
+
+  /api/v1/gallery:
+    get:
+      tags: [Gallery]
+      summary: List gallery items
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [interior, atmosphere, food, paella, tapas, events]
+        - name: media_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [photo, video]
+        - name: featured
+          in: query
+          required: false
+          description: Pass `true` to return only featured items
+          schema:
+            type: string
+            enum: ["true"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GalleryItem"
+
+  /api/v1/gallery/{id}:
+    get:
+      tags: [Gallery]
+      summary: Show a gallery item
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GalleryItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Team Members ─────────────────────────────────────────────────────────────
+
+  /api/v1/team_members:
+    get:
+      tags: [Team]
+      summary: List active team members
+      parameters:
+        - name: featured
+          in: query
+          required: false
+          description: Pass `true` to return only featured members
+          schema:
+            type: string
+            enum: ["true"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMember"
+
+  /api/v1/team_members/{id}:
+    get:
+      tags: [Team]
+      summary: Show a team member
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Business Hours ───────────────────────────────────────────────────────────
+
+  /api/v1/business_hours:
+    get:
+      tags: [Business Hours]
+      summary: List weekly schedule and upcoming special dates
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  weekly:
+                    type: array
+                    description: Seven regular weekly entries (Sun–Sat)
+                    items:
+                      $ref: "#/components/schemas/BusinessHour"
+                  specials:
+                    type: array
+                    description: Upcoming date-specific overrides (holidays, etc.)
+                    items:
+                      $ref: "#/components/schemas/BusinessHour"
+
+  /api/v1/business_hours/availability:
+    get:
+      tags: [Business Hours]
+      summary: Check whether the restaurant is open on a specific date
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-10-02"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Availability"
+              examples:
+                open:
+                  summary: Open day
+                  value:
+                    date: "2026-10-02"
+                    day_name: Friday
+                    open: true
+                    override: false
+                    open_time: "13:00"
+                    close_time: "23:30"
+                closed:
+                  summary: Closed day (Monday)
+                  value:
+                    date: "2026-10-06"
+                    day_name: Monday
+                    open: false
+                    override: false
+                    reason: "Regular closing day"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+# ── Components ────────────────────────────────────────────────────────────────
+
+components:
+
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    slug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+      example: starters
+    confirmation_code:
+      name: confirmation_code
+      in: path
+      required: true
+      description: 8-character alphanumeric reservation code (case-insensitive)
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9]{8}$'
+      example: 5HFFE1AR
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorSingle"
+          example:
+            error: "Couldn't find Reservation"
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorSingle"
+              - $ref: "#/components/schemas/ErrorMultiple"
+    BadRequest:
+      description: Bad request — missing or invalid parameter
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorSingle"
+
+  schemas:
+
+    # ── Errors ────────────────────────────────────────────────────────────────
+
+    ErrorSingle:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    ErrorMultiple:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+      required: [errors]
+
+    # ── Menu ──────────────────────────────────────────────────────────────────
+
+    MenuCategorySummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        category_type:
+          type: string
+          enum: [food, beverage, paella, tapas]
+        display_order:
+          type: integer
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+        subcategories:
+          type: array
+          items:
+            $ref: "#/components/schemas/MenuCategorySummary"
+
+    MenuCategoryDetail:
+      allOf:
+        - $ref: "#/components/schemas/MenuCategorySummary"
+        - type: object
+          properties:
+            menu_items:
+              type: array
+              items:
+                $ref: "#/components/schemas/MenuItem"
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        alt_text:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+        display_order:
+          type: integer
+          nullable: true
+        available:
+          type: boolean
+        featured:
+          type: boolean
+        dietary_flags:
+          type: object
+          description: |
+            Arbitrary boolean flags. Common keys: vegetarian, vegan, gluten_free.
+          additionalProperties:
+            type: boolean
+          nullable: true
+        category_slug:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+
+    # ── Tables ────────────────────────────────────────────────────────────────
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: integer
+        number:
+          type: string
+          example: T3
+        capacity:
+          type: integer
+        min_capacity:
+          type: integer
+        location:
+          type: string
+          enum: [indoor, outdoor, private, bar]
+        notes:
+          type: string
+          nullable: true
+        total_amount:
+          type: number
+          format: float
+          description: Base price of the table (INR)
+
+    TableWithPrice:
+      allOf:
+        - $ref: "#/components/schemas/Table"
+        - type: object
+          properties:
+            booking_price:
+              type: number
+              format: float
+              description: Price for the requested time slot (INR)
+
+    TableAvailability:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+        end_time:
+          type: string
+        duration_minutes:
+          type: integer
+        duration_hours:
+          type: number
+          format: float
+        party_size:
+          type: integer
+        available_tables:
+          type: array
+          items:
+            $ref: "#/components/schemas/TableWithPrice"
+
+    # ── Events ────────────────────────────────────────────────────────────────
+
+    EventSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        event_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+        end_time:
+          type: string
+          nullable: true
+        max_capacity:
+          type: integer
+        spots_remaining:
+          type: integer
+        price_per_person:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [upcoming, active, cancelled, completed]
+        event_type:
+          type: string
+          nullable: true
+          enum: [flamenco_show, wine_tasting, paella_class, private_dining, seasonal_menu]
+        available:
+          type: boolean
+        booking_deadline:
+          type: string
+          format: date
+          nullable: true
+
+    EventDetail:
+      allOf:
+        - $ref: "#/components/schemas/EventSummary"
+        - type: object
+          properties:
+            description:
+              type: string
+              nullable: true
+
+    # ── Reservations ──────────────────────────────────────────────────────────
+
+    ReservationCreate:
+      type: object
+      required: [reservation]
+      properties:
+        reservation:
+          type: object
+          required: [name, email, party_size, reservation_date]
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+            phone:
+              type: string
+              nullable: true
+            party_size:
+              type: integer
+              minimum: 1
+            reservation_date:
+              type: string
+              format: date
+            reservation_time:
+              type: string
+              pattern: '^\d{2}:\d{2}$'
+              description: Required for table bookings; auto-set from event for event bookings
+            end_time:
+              type: string
+              pattern: '^\d{2}:\d{2}$'
+              description: Required for table bookings
+            table_id:
+              type: integer
+              nullable: true
+              description: Required for table bookings; omit for event bookings
+            event_id:
+              type: integer
+              nullable: true
+              description: Provide for event bookings; omit for table bookings
+            special_requests:
+              type: string
+              nullable: true
+            notes:
+              type: string
+              nullable: true
+
+    ReservationUpdate:
+      type: object
+      required: [reservation]
+      properties:
+        reservation:
+          type: object
+          properties:
+            party_size:
+              type: integer
+              minimum: 1
+            reservation_date:
+              type: string
+              format: date
+            reservation_time:
+              type: string
+              pattern: '^\d{2}:\d{2}$'
+            end_time:
+              type: string
+              pattern: '^\d{2}:\d{2}$'
+            table_id:
+              type: integer
+            special_requests:
+              type: string
+            notes:
+              type: string
+
+    Reservation:
+      type: object
+      properties:
+        confirmation_code:
+          type: string
+          example: 5HFFE1AR
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        party_size:
+          type: integer
+        reservation_date:
+          type: string
+          format: date
+        reservation_time:
+          type: string
+        end_time:
+          type: string
+          nullable: true
+        special_requests:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled]
+        table_id:
+          type: integer
+          nullable: true
+        table:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Table"
+        event_id:
+          type: integer
+          nullable: true
+        event:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/EventSummary"
+        total_amount:
+          type: string
+          nullable: true
+          description: |
+            Table bookings: table price × duration / 2 hrs.
+            Event bookings: price_per_person × party_size.
+        deposit_amount:
+          type: string
+          nullable: true
+        total_paid:
+          type: string
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+        created_at:
+          type: string
+          format: date-time
+
+    CancellationResult:
+      type: object
+      properties:
+        reservation:
+          $ref: "#/components/schemas/Reservation"
+        cancellation_fee:
+          type: string
+          description: 3% of total_amount (zero if cancelled by restaurant)
+        refund_amount:
+          type: string
+          description: Amount refunded after deducting the cancellation fee
+
+    # ── Payments ──────────────────────────────────────────────────────────────
+
+    PaymentTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        payment_id:
+          type: integer
+        amount:
+          type: string
+        currency:
+          type: string
+          default: INR
+        status:
+          type: string
+          enum: [pending, processing, completed, failed, refunded]
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        failed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        reservation_id:
+          type: integer
+        amount:
+          type: string
+        currency:
+          type: string
+          default: INR
+        status:
+          type: string
+          enum: [pending, processing, completed, failed, refunded]
+        payment_type:
+          type: string
+          enum: [full, deposit]
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        refunded_amount:
+          type: string
+          nullable: true
+        refunded_at:
+          type: string
+          format: date-time
+          nullable: true
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentTransaction"
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Business Hours ────────────────────────────────────────────────────────
+
+    BusinessHour:
+      type: object
+      properties:
+        id:
+          type: integer
+        day_of_week:
+          type: integer
+          nullable: true
+          description: 0=Sunday … 6=Saturday; null for date-specific entries
+        specific_date:
+          type: string
+          format: date
+          nullable: true
+          description: Set only for date-specific overrides
+        day_name:
+          type: string
+          nullable: true
+          example: Friday
+        open:
+          type: boolean
+        open_time:
+          type: string
+          nullable: true
+        close_time:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    Availability:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        day_name:
+          type: string
+        open:
+          type: boolean
+        override:
+          type: boolean
+          description: True when a date-specific override applies
+        open_time:
+          type: string
+          description: Present only when open is true
+        close_time:
+          type: string
+          description: Present only when open is true
+        reason:
+          type: string
+          description: Present when a reason is recorded (e.g. public holiday name)
+          nullable: true
+
+    # ── Gallery ───────────────────────────────────────────────────────────────
+
+    GalleryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        alt_text:
+          type: string
+          nullable: true
+        media_type:
+          type: string
+          enum: [photo, video]
+        category:
+          type: string
+          enum: [interior, atmosphere, food, paella, tapas, events]
+        video_url:
+          type: string
+          format: uri
+          nullable: true
+        featured:
+          type: boolean
+        position:
+          type: integer
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+
+    # ── Team ─────────────────────────────────────────────────────────────────
+
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+        bio:
+          type: string
+          nullable: true
+        featured:
+          type: boolean
+        position:
+          type: integer
+        instagram_url:
+          type: string
+          format: uri
+          nullable: true
+        photo_url:
+          type: string
+          format: uri
+          nullable: true

@@ -12,7 +12,6 @@ class MenuCategory < ApplicationRecord
 
   scope :active,   -> { where(active: true) }
   scope :ordered,  -> { order(:display_order, :name) }
-  scope :root,     -> { where(parent_id: nil) }
   scope :by_type,  ->(type) { where(category_type: type) }
 
   before_validation :generate_slug, on: :create
