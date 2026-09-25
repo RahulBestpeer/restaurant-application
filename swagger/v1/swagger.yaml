@@ -9,8 +9,6 @@ info:
     All monetary values are in **INR (₹)**. Dates use **YYYY-MM-DD**, times use **HH:MM** (24-hour).
 
 servers:
-  - url: http://localhost:3000
-    description: Development
   - url: https://restaurant-application-u25e.onrender.com
     description: Production
 

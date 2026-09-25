@@ -23,4 +23,14 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   config.action_mailer.default_url_options = { host: ENV.fetch("APP_HOST", "localhost") }
+
+  config.action_controller.default_url_options = {
+    host: ENV.fetch("APP_HOST", "restaurant-application-u25e.onrender.com"),
+    protocol: "https"
+  }
+
+  config.active_storage.default_url_options = {
+    host: ENV.fetch("APP_HOST", "restaurant-application-u25e.onrender.com"),
+    protocol: "https"
+  }
 end
