@@ -51,7 +51,7 @@ items = [
   { category: wines, name: "Rioja Reserva — Marqués de Cáceres", desc: "Full-bodied red with notes of cherry, vanilla and spice. 75cl bottle.",                 price: 2850,  featured: true,  dietary: { vegan: true, gluten_free: true } },
   { category: wines, name: "Albariño — Rías Baixas",             desc: "Crisp, aromatic white wine with citrus and stone fruit. Excellent with seafood. 75cl.", price: 2350,  featured: false, dietary: { vegan: true, gluten_free: true } },
   { category: wines, name: "Cava Brut Nature — Gramona",         desc: "Elegant Spanish sparkling wine, dry with fine bubbles and toasted brioche notes. 75cl.", price: 2650,  featured: false, dietary: { vegan: true, gluten_free: true } },
-  { category: wines, name: "House Wine — Red / White / Rosé",    desc: "Our carefully selected house wine. Ask your server for today's selection. Per glass.",   price: 450,   featured: false, dietary: { vegan: true, gluten_free: true } },
+  { category: wines, name: "House Wine",    desc: "Our carefully selected house wine. Ask your server for today's selection. Per glass.",   price: 450,   featured: false, dietary: { vegan: true, gluten_free: true } },
 
   # Beers
   { category: beers, name: "Mahou Cinco Estrellas (330ml)", desc: "Madrid's iconic lager. Crisp, refreshing and perfectly balanced.",        price: 280, featured: false, dietary: { vegan: true } },
@@ -283,7 +283,7 @@ puts "\nSeeding gallery items..."
     title:       "How Our Paella is Made",
     category:    "paella",
     media_type:  "video",
-    video_url:   "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    video_url:   "https://www.youtube.com/embed/djIe9Q3NbEc",
     alt_text:    "Behind the scenes — our chef prepares authentic Valencian paella",
     description: "Watch our head chef walk through the entire paella-making process, from sourcing the bomba rice to achieving the perfect socarrat.",
     position:    4,
@@ -302,7 +302,7 @@ puts "\nSeeding gallery items..."
     title:       "Flamenco Night Recap",
     category:    "events",
     media_type:  "video",
-    video_url:   "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    video_url:   "https://www.youtube.com/embed/djIe9Q3NbEc",
     alt_text:    "Highlights from our monthly Flamenco Night event",
     description: "An unforgettable evening of live flamenco, tapas, and fine Spanish wine.",
     position:    3,
@@ -494,3 +494,60 @@ unless Reservation.exists?(email: "test.event@example.com")
 end
 
 puts "  Total reservations: #{Reservation.count}"
+
+
+# Add attachements for team member and gallary and menuitems
+team_folder = Rails.root.join("db/images/team")
+
+TeamMember.find_each do |member|
+  filename = "#{member.name}.jpeg"
+
+  file_path = team_folder.join(filename)
+
+  next unless File.exist?(file_path)
+  next if member.photo.attached?
+
+  member.photo.attach(
+    io: File.open(file_path),
+    filename: File.basename(file_path),
+    content_type: Marcel::MimeType.for(file_path)
+  )
+
+  puts "Attached #{filename} to #{member.name}"
+end
+
+menu_folder = Rails.root.join("db/images/menu_item")
+MenuItem.find_each do |menu_item|
+  filename = "#{menu_item.name}.jpeg"
+
+  file_path = menu_folder.join(filename)
+
+  next unless File.exist?(file_path)
+  next if menu_item.image.attached?
+
+  menu_item.image.attach(
+    io: File.open(file_path),
+    filename: File.basename(file_path),
+    content_type: Marcel::MimeType.for(file_path)
+  )
+
+  puts "Attached #{filename} to #{menu_item.name}"
+end
+
+gallery_folder = Rails.root.join("db/images/gallery")
+GalleryItem.find_each do |gallery_item|
+  filename = "#{gallery_item.title}.jpeg"
+
+  file_path = gallery_folder.join(filename)
+
+  next unless File.exist?(file_path)
+  next if gallery_item.image.attached?
+
+  gallery_item.image.attach(
+    io: File.open(file_path),
+    filename: File.basename(file_path),
+    content_type: Marcel::MimeType.for(file_path)
+  )
+
+  puts "Attached #{filename} to #{gallery_item.title}"
+end
