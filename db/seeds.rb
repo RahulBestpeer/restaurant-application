@@ -496,16 +496,19 @@ end
 puts "  Total reservations: #{Reservation.count}"
 
 
-# Add attachements for team member and gallary and menuitems
+# Add attachments for team members, menu items, and gallery items
+
+# Team Member Images
 team_folder = Rails.root.join("db/images/team")
 
 TeamMember.find_each do |member|
   filename = "#{member.name}.jpeg"
-
   file_path = team_folder.join(filename)
 
   next unless File.exist?(file_path)
-  next if member.photo.attached?
+
+  # Remove existing attachment so the file is re-uploaded
+  member.photo.purge if member.photo.attached?
 
   member.photo.attach(
     io: File.open(file_path),
@@ -516,14 +519,18 @@ TeamMember.find_each do |member|
   puts "Attached #{filename} to #{member.name}"
 end
 
+
+# Menu Item Images
 menu_folder = Rails.root.join("db/images/menu_item")
+
 MenuItem.find_each do |menu_item|
   filename = "#{menu_item.name}.jpeg"
-
   file_path = menu_folder.join(filename)
 
   next unless File.exist?(file_path)
-  next if menu_item.image.attached?
+
+  # Remove existing attachment so the file is re-uploaded
+  menu_item.image.purge if menu_item.image.attached?
 
   menu_item.image.attach(
     io: File.open(file_path),
@@ -534,14 +541,18 @@ MenuItem.find_each do |menu_item|
   puts "Attached #{filename} to #{menu_item.name}"
 end
 
+
+# Gallery Images
 gallery_folder = Rails.root.join("db/images/gallery")
+
 GalleryItem.find_each do |gallery_item|
   filename = "#{gallery_item.title}.jpeg"
-
   file_path = gallery_folder.join(filename)
 
   next unless File.exist?(file_path)
-  next if gallery_item.image.attached?
+
+  # Remove existing attachment so the file is re-uploaded
+  gallery_item.image.purge if gallery_item.image.attached?
 
   gallery_item.image.attach(
     io: File.open(file_path),

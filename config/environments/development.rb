@@ -16,4 +16,13 @@ Rails.application.configure do
   config.active_record.verbose_query_logs = true
   config.active_record.query_log_tags_enabled = true
   config.action_controller.raise_on_missing_callback_actions = true
+  config.action_controller.default_url_options = {
+    host: ENV.fetch("APP_HOST", "localhost"),
+    protocol: "http"
+  }
+
+  config.active_storage.default_url_options = {
+    host: ENV.fetch("APP_HOST", "localhost"),
+    protocol: "http"
+  }
 end
