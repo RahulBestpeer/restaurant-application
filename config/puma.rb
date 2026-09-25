@@ -27,15 +27,19 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
 threads threads_count, threads_count
 
-# Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
 
-# Allow puma to be restarted by `bin/rails restart` command.
+# Cluster mode: set WEB_CONCURRENCY=2 (or higher) on paid Render plans.
+# Leave at 0 (default) for the free plan — single-process/thread-only mode.
+workers_count = Integer(ENV.fetch("WEB_CONCURRENCY", 0))
+if workers_count > 0
+  workers workers_count
+  preload_app!
+
+  on_worker_boot do
+    ActiveRecord::Base.establish_connection if defined?(ActiveRecord)
+  end
+end
+
 plugin :tmp_restart
-
-# Run the Solid Queue supervisor inside of Puma for single-server deployments
-plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]
-
-# Specify the PID file. Defaults to tmp/pids/server.pid in development.
-# In other environments, only set the PID file if requested.
 pidfile ENV["PIDFILE"] if ENV["PIDFILE"]
