@@ -18,11 +18,13 @@ Rails.application.configure do
   config.action_controller.raise_on_missing_callback_actions = true
   config.action_controller.default_url_options = {
     host: ENV.fetch("APP_HOST", "localhost"),
+    port: ENV.fetch("APP_PORT", 3000),
     protocol: "http"
   }
 
   config.active_storage.default_url_options = {
     host: ENV.fetch("APP_HOST", "localhost"),
+    port: ENV.fetch("APP_PORT", 3000),
     protocol: "http"
   }
 end
