@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_25_000003) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_29_093509) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -126,8 +126,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_25_000003) do
     t.text "notes"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "transaction_type", default: "payment", null: false
+    t.string "provider", default: "stripe", null: false
+    t.string "provider_transaction_id"
     t.index ["payment_id"], name: "index_payment_transactions_on_payment_id"
+    t.index ["provider", "provider_transaction_id"], name: "index_payment_transactions_on_provider_and_provider_txn_id", unique: true
+    t.index ["provider"], name: "index_payment_transactions_on_provider"
     t.index ["status"], name: "index_payment_transactions_on_status"
+    t.index ["transaction_type"], name: "index_payment_transactions_on_transaction_type"
   end
 
   create_table "payments", force: :cascade do |t|

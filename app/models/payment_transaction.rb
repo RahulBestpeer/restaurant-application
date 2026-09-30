@@ -1,5 +1,21 @@
 class PaymentTransaction < ApplicationRecord
-  STATUSES = %w[pending processing completed failed refunded].freeze
+  STATUSES = %w[
+    pending
+    processing
+    completed
+    failed
+    refunded
+  ].freeze
+
+  TRANSACTION_TYPES = %w[
+    payment
+    refund
+  ].freeze
+
+  PROVIDERS = %w[
+    stripe
+    paypal
+  ].freeze
 
   belongs_to :payment
 
@@ -9,13 +25,34 @@ class PaymentTransaction < ApplicationRecord
 
   validates :currency, presence: true
 
-  validates :status, inclusion: { in: STATUSES }
+  validates :status,
+            inclusion: { in: STATUSES }
+
+  validates :transaction_type,
+            inclusion: { in: TRANSACTION_TYPES }
+
+  validates :provider,
+            inclusion: { in: PROVIDERS }
 
   def complete!
-    update!(status: "completed", completed_at: Time.current)
+    update!(
+      status: "completed",
+      completed_at: Time.current
+    )
   end
 
   def fail!
-    update!(status: "failed", failed_at: Time.current)
+    update!(
+      status: "failed",
+      failed_at: Time.current
+    )
+  end
+
+  def completed?
+    status == "completed"
+  end
+
+  def failed?
+    status == "failed"
   end
 end

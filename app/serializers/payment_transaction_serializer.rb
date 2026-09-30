@@ -6,6 +6,9 @@ class PaymentTransactionSerializer
       amount: transaction.amount,
       currency: transaction.currency,
       status: transaction.status,
+      transaction_type: transaction.transaction_type,
+      provider: transaction.provider,
+      provider_transaction_id: transaction.provider_transaction_id,
       completed_at: transaction.completed_at,
       failed_at: transaction.failed_at,
       created_at: transaction.created_at

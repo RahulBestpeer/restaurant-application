@@ -4,6 +4,9 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # Payment provider webhooks
+  post "/webhooks/:provider", to: "webhooks#create"
+
   namespace :api do
     namespace :v1 do
       resources :menu_categories, only: [ :index, :show ], param: :slug
@@ -18,6 +21,7 @@ Rails.application.routes.draw do
 
       # POST /api/v1/reservations/:confirmation_code/payment
       post "reservations/:confirmation_code/payment", to: "payments#create", as: :reservation_payment
+      get "reservations/:confirmation_code/payment", to: "payments#show", as: :show_reservation_payment
 
       resources :tables, only: [ :index ] do
         collection do

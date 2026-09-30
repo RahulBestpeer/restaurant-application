@@ -11,6 +11,8 @@ info:
 servers:
   - url: https://restaurant-application-u25e.onrender.com
     description: Production
+  - url: http://localhost:3000
+    description: development
 
 tags:
   - name: Menu
@@ -18,7 +20,9 @@ tags:
   - name: Reservations
     description: Create, view, update, and cancel reservations
   - name: Payments
-    description: Process payments for reservations
+    description: Create and retrieve payments for reservations
+  - name: Payment Webhooks
+    description: Payment provider webhook endpoints
   - name: Tables
     description: Table listing and availability
   - name: Events
@@ -158,6 +162,7 @@ paths:
                     end_time: "21:00"
                     table_id: 1
                     special_requests: "Window seat if possible"
+
               event_booking:
                 summary: Event booking
                 value:
@@ -167,6 +172,7 @@ paths:
                     phone: "9876543211"
                     party_size: 2
                     event_id: 1
+
       responses:
         "201":
           description: Reservation created
@@ -174,6 +180,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Reservation"
+
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -190,6 +197,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Reservation"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -199,14 +207,17 @@ paths:
       description: |
         Updates an existing reservation. Returns 422 if the reservation is
         cancelled or already paid.
+
       parameters:
         - $ref: "#/components/parameters/confirmation_code"
+
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ReservationUpdate"
+
       responses:
         "200":
           description: Updated
@@ -214,8 +225,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Reservation"
+
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -227,8 +240,10 @@ paths:
         Cancels the reservation. If a completed payment exists, a refund is
         issued automatically with a 3% cancellation fee deducted. The
         restaurant bears no fee when cancelling on behalf of the customer.
+
       parameters:
         - $ref: "#/components/parameters/confirmation_code"
+
       responses:
         "200":
           description: Cancelled
@@ -236,34 +251,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CancellationResult"
+
               example:
                 reservation:
                   confirmation_code: "5HFFE1AR"
                   status: cancelled
                 cancellation_fee: "90.0"
                 refund_amount: "2910.0"
+
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
   # ── Payments ─────────────────────────────────────────────────────────────────
 
   /api/v1/reservations/{confirmation_code}/payment:
+
     post:
       tags: [Payments]
-      summary: Pay for a reservation
+      summary: Create a payment for a reservation
       description: |
-        Creates a payment and immediately completes it (no external provider).
-        Sets reservation status to **confirmed**.
+        Creates a payment transaction using the selected payment provider.
+
+        The payment is not automatically marked as completed. The payment
+        provider returns a client secret which the frontend uses to complete
+        the payment.
+
+        Payment types:
 
         - `full` — charges the full `total_amount` of the reservation.
-        - `deposit` — charges 10% of `total_amount`.
+        - `deposit` — charges 10% of the `total_amount`.
 
-        Returns 422 if the reservation is cancelled, already paid, or has no
-        calculable amount.
+        The reservation is confirmed after the payment provider sends a
+        successful payment webhook.
+
+        Returns 422 if the reservation is cancelled, already has a pending,
+        processing, or completed payment, or if the payment amount cannot
+        be calculated.
+
       parameters:
         - $ref: "#/components/parameters/confirmation_code"
+
       requestBody:
         required: false
         content:
@@ -275,39 +305,258 @@ paths:
                   type: string
                   enum: [full, deposit]
                   default: full
-            example:
-              payment_type: full
+                  description: |
+                    Type of payment to create.
+                provider:
+                  type: string
+                  enum: [stripe]
+                  default: stripe
+                  description: |
+                    Payment provider. Currently only Stripe is supported.
+
+            examples:
+              full_payment:
+                summary: Full payment
+                value:
+                  payment_type: full
+                  provider: stripe
+
+              deposit_payment:
+                summary: Deposit payment
+                value:
+                  payment_type: deposit
+                  provider: stripe
+
       responses:
         "201":
-          description: Payment completed
+          description: Payment created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Payment"
+                $ref: "#/components/schemas/PaymentResponse"
+
               example:
-                id: 11
-                reservation_id: 11
-                amount: "3000.0"
-                currency: INR
-                status: completed
-                payment_type: full
-                paid_at: "2026-09-25T09:58:50.521+02:00"
-                refunded_amount: null
-                refunded_at: null
-                transactions:
-                  - id: 5
-                    payment_id: 11
-                    amount: "3000.0"
-                    currency: INR
-                    status: completed
-                    completed_at: "2026-09-25T09:58:50.519+02:00"
-                    failed_at: null
-                    created_at: "2026-09-25T09:58:50.517+02:00"
-                created_at: "2026-09-25T09:58:50.514+02:00"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
+                payment:
+                  id: 11
+                  reservation_id: 11
+                  amount: "3000.0"
+                  currency: INR
+                  status: processing
+                  payment_type: full
+                  paid_at: null
+                  refunded_amount: null
+                  refunded_at: null
+                  transactions:
+                    - id: 5
+                      payment_id: 11
+                      amount: "3000.0"
+                      currency: INR
+                      status: processing
+                      transaction_type: payment
+                      provider: stripe
+                      provider_transaction_id: "pi_3ABC123"
+                      completed_at: null
+                      failed_at: null
+                      created_at: "2026-09-25T09:58:50.517+02:00"
+                  created_at: "2026-09-25T09:58:50.514+02:00"
+
+                transaction:
+                  id: 5
+                  payment_id: 11
+                  amount: "3000.0"
+                  currency: INR
+                  status: processing
+                  transaction_type: payment
+                  provider: stripe
+                  provider_transaction_id: "pi_3ABC123"
+                  completed_at: null
+                  failed_at: null
+                  created_at: "2026-09-25T09:58:50.517+02:00"
+
+                provider:
+                  provider_transaction_id: "pi_3ABC123"
+                  client_secret: "pi_3ABC123_secret_ABC123"
+                  status: requires_payment_method
+
         "404":
           $ref: "#/components/responses/NotFound"
+
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    get:
+      tags: [Payments]
+      summary: Retrieve the latest payment for a reservation
+      description: |
+        Retrieves the latest payment and payment transaction for the
+        reservation.
+
+        The provider information is refreshed from the payment provider.
+        For Stripe, a client secret is returned when the PaymentIntent still
+        requires payment, confirmation, or customer action.
+
+      parameters:
+        - $ref: "#/components/parameters/confirmation_code"
+
+      responses:
+        "200":
+          description: Payment retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+
+              example:
+                payment:
+                  id: 11
+                  reservation_id: 11
+                  amount: "3000.0"
+                  currency: INR
+                  status: processing
+                  payment_type: full
+                  paid_at: null
+                  refunded_amount: null
+                  refunded_at: null
+                  transactions:
+                    - id: 5
+                      payment_id: 11
+                      amount: "3000.0"
+                      currency: INR
+                      status: processing
+                      transaction_type: payment
+                      provider: stripe
+                      provider_transaction_id: "pi_3ABC123"
+                      completed_at: null
+                      failed_at: null
+                      created_at: "2026-09-25T09:58:50.517+02:00"
+                  created_at: "2026-09-25T09:58:50.514+02:00"
+
+                transaction:
+                  id: 5
+                  payment_id: 11
+                  amount: "3000.0"
+                  currency: INR
+                  status: processing
+                  transaction_type: payment
+                  provider: stripe
+                  provider_transaction_id: "pi_3ABC123"
+                  completed_at: null
+                  failed_at: null
+                  created_at: "2026-09-25T09:58:50.517+02:00"
+
+                provider:
+                  provider_transaction_id: "pi_3ABC123"
+                  client_secret: "pi_3ABC123_secret_ABC123"
+                  status: requires_action
+
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Payment Webhooks ─────────────────────────────────────────────────────────
+
+  /webhooks/{provider}:
+    post:
+      tags: [Payment Webhooks]
+      summary: Receive payment provider webhook
+      description: |
+        Receives webhook events from a payment provider.
+
+        The webhook is authenticated using the provider-specific signature
+        header. For Stripe, the `Stripe-Signature` header is required.
+
+        Stripe payment events currently handled by the backend include:
+
+        - `payment_intent.succeeded`
+        - `payment_intent.payment_failed`
+
+        A successful `payment_intent.succeeded` event completes the payment
+        transaction, marks the payment as completed, and confirms the
+        reservation.
+
+        A `payment_intent.payment_failed` event marks the payment transaction
+        and payment as failed.
+
+        The endpoint returns HTTP 204 when the webhook is successfully
+        processed.
+
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Payment provider sending the webhook
+          schema:
+            type: string
+            enum: [stripe]
+          example: stripe
+
+        - name: Stripe-Signature
+          in: header
+          required: true
+          description: |
+            Stripe webhook signature used to verify that the request was
+            generated by Stripe.
+          schema:
+            type: string
+          example: "t=1727251000,v1=abc123"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                Raw payment provider webhook event. The exact structure
+                depends on the provider and event type.
+              additionalProperties: true
+
+            example:
+              id: "evt_123456789"
+              object: "event"
+              type: "payment_intent.succeeded"
+              data:
+                object:
+                  id: "pi_3ABC123"
+                  object: "payment_intent"
+                  amount: 300000
+                  currency: "inr"
+                  status: "succeeded"
+                  metadata:
+                    payment_id: "11"
+                    payment_transaction_id: "5"
+
+      responses:
+        "204":
+          description: Webhook processed successfully
+
+        "400":
+          description: Invalid webhook signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorSingle"
+              example:
+                error: "Invalid webhook signature"
+
+        "422":
+          description: Webhook processing failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorSingle"
+              examples:
+                invalid_provider:
+                  summary: Unsupported provider
+                  value:
+                    error: "Unsupported payment provider: paypal"
+
+                processing_error:
+                  summary: Processing error
+                  value:
+                    error: "Webhook processing failed"
 
   # ── Tables ───────────────────────────────────────────────────────────────────
 
@@ -335,6 +584,7 @@ paths:
 
         Note: conflict checking against existing reservations happens at
         reservation-creation time, not here.
+
       parameters:
         - name: date
           in: query
@@ -343,6 +593,7 @@ paths:
             type: string
             format: date
           example: "2026-10-09"
+
         - name: start_time
           in: query
           required: true
@@ -350,6 +601,7 @@ paths:
             type: string
             pattern: '^\d{2}:\d{2}$'
           example: "19:00"
+
         - name: end_time
           in: query
           required: true
@@ -357,6 +609,7 @@ paths:
             type: string
             pattern: '^\d{2}:\d{2}$'
           example: "21:00"
+
         - name: party_size
           in: query
           required: true
@@ -364,6 +617,7 @@ paths:
             type: integer
             minimum: 1
           example: 2
+
       responses:
         "200":
           description: OK
@@ -371,6 +625,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TableAvailability"
+
         "400":
           $ref: "#/components/responses/BadRequest"
 
@@ -403,6 +658,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EventDetail"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -419,12 +675,14 @@ paths:
           schema:
             type: string
             enum: [interior, atmosphere, food, paella, tapas, events]
+
         - name: media_type
           in: query
           required: false
           schema:
             type: string
             enum: [photo, video]
+
         - name: featured
           in: query
           required: false
@@ -432,6 +690,7 @@ paths:
           schema:
             type: string
             enum: ["true"]
+
       responses:
         "200":
           description: OK
@@ -455,6 +714,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GalleryItem"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -472,6 +732,7 @@ paths:
           schema:
             type: string
             enum: ["true"]
+
       responses:
         "200":
           description: OK
@@ -495,6 +756,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamMember"
+
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -517,6 +779,7 @@ paths:
                     description: Seven regular weekly entries (Sun–Sat)
                     items:
                       $ref: "#/components/schemas/BusinessHour"
+
                   specials:
                     type: array
                     description: Upcoming date-specific overrides (holidays, etc.)
@@ -535,6 +798,7 @@ paths:
             type: string
             format: date
           example: "2026-10-02"
+
       responses:
         "200":
           description: OK
@@ -542,6 +806,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Availability"
+
               examples:
                 open:
                   summary: Open day
@@ -552,6 +817,7 @@ paths:
                     override: false
                     open_time: "13:00"
                     close_time: "23:30"
+
                 closed:
                   summary: Closed day (Monday)
                   value:
@@ -560,6 +826,7 @@ paths:
                     open: false
                     override: false
                     reason: "Regular closing day"
+
         "400":
           $ref: "#/components/responses/BadRequest"
 
@@ -567,13 +834,17 @@ paths:
 
 components:
 
+  # ── Parameters ──────────────────────────────────────────────────────────────
+
   parameters:
+
     id:
       name: id
       in: path
       required: true
       schema:
         type: integer
+
     slug:
       name: slug
       in: path
@@ -581,6 +852,7 @@ components:
       schema:
         type: string
       example: starters
+
     confirmation_code:
       name: confirmation_code
       in: path
@@ -591,7 +863,10 @@ components:
         pattern: '^[A-Za-z0-9]{8}$'
       example: 5HFFE1AR
 
+  # ── Common Responses ───────────────────────────────────────────────────────
+
   responses:
+
     NotFound:
       description: Resource not found
       content:
@@ -600,6 +875,7 @@ components:
             $ref: "#/components/schemas/ErrorSingle"
           example:
             error: "Couldn't find Reservation"
+
     UnprocessableEntity:
       description: Validation failed
       content:
@@ -608,12 +884,15 @@ components:
             oneOf:
               - $ref: "#/components/schemas/ErrorSingle"
               - $ref: "#/components/schemas/ErrorMultiple"
+
     BadRequest:
       description: Bad request — missing or invalid parameter
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorSingle"
+
+  # ── Schemas ─────────────────────────────────────────────────────────────────
 
   schemas:
 
@@ -624,7 +903,8 @@ components:
       properties:
         error:
           type: string
-      required: [error]
+      required:
+        - error
 
     ErrorMultiple:
       type: object
@@ -633,7 +913,8 @@ components:
           type: array
           items:
             type: string
-      required: [errors]
+      required:
+        - errors
 
     # ── Menu ──────────────────────────────────────────────────────────────────
 
@@ -642,19 +923,25 @@ components:
       properties:
         id:
           type: integer
+
         slug:
           type: string
+
         name:
           type: string
+
         category_type:
           type: string
           enum: [food, beverage, paella, tapas]
+
         display_order:
           type: integer
           nullable: true
+
         parent_id:
           type: integer
           nullable: true
+
         subcategories:
           type: array
           items:
@@ -663,6 +950,7 @@ components:
     MenuCategoryDetail:
       allOf:
         - $ref: "#/components/schemas/MenuCategorySummary"
+
         - type: object
           properties:
             menu_items:
@@ -675,24 +963,32 @@ components:
       properties:
         id:
           type: integer
+
         name:
           type: string
+
         description:
           type: string
           nullable: true
+
         alt_text:
           type: string
           nullable: true
+
         price:
           type: number
           format: float
+
         display_order:
           type: integer
           nullable: true
+
         available:
           type: boolean
+
         featured:
           type: boolean
+
         dietary_flags:
           type: object
           description: |
@@ -700,8 +996,10 @@ components:
           additionalProperties:
             type: boolean
           nullable: true
+
         category_slug:
           type: string
+
         image_url:
           type: string
           format: uri
@@ -714,19 +1012,25 @@ components:
       properties:
         id:
           type: integer
+
         number:
           type: string
           example: T3
+
         capacity:
           type: integer
+
         min_capacity:
           type: integer
+
         location:
           type: string
           enum: [indoor, outdoor, private, bar]
+
         notes:
           type: string
           nullable: true
+
         total_amount:
           type: number
           format: float
@@ -735,6 +1039,7 @@ components:
     TableWithPrice:
       allOf:
         - $ref: "#/components/schemas/Table"
+
         - type: object
           properties:
             booking_price:
@@ -748,17 +1053,23 @@ components:
         date:
           type: string
           format: date
+
         start_time:
           type: string
+
         end_time:
           type: string
+
         duration_minutes:
           type: integer
+
         duration_hours:
           type: number
           format: float
+
         party_size:
           type: integer
+
         available_tables:
           type: array
           items:
@@ -771,32 +1082,48 @@ components:
       properties:
         id:
           type: integer
+
         name:
           type: string
+
         event_date:
           type: string
           format: date
+
         start_time:
           type: string
+
         end_time:
           type: string
           nullable: true
+
         max_capacity:
           type: integer
+
         spots_remaining:
           type: integer
+
         price_per_person:
           type: number
           format: float
+
         status:
           type: string
           enum: [upcoming, active, cancelled, completed]
+
         event_type:
           type: string
           nullable: true
-          enum: [flamenco_show, wine_tasting, paella_class, private_dining, seasonal_menu]
+          enum:
+            - flamenco_show
+            - wine_tasting
+            - paella_class
+            - private_dining
+            - seasonal_menu
+
         available:
           type: boolean
+
         booking_deadline:
           type: string
           format: date
@@ -805,6 +1132,7 @@ components:
     EventDetail:
       allOf:
         - $ref: "#/components/schemas/EventSummary"
+
         - type: object
           properties:
             description:
@@ -815,137 +1143,183 @@ components:
 
     ReservationCreate:
       type: object
-      required: [reservation]
+      required:
+        - reservation
+
       properties:
         reservation:
           type: object
-          required: [name, email, party_size, reservation_date]
+          required:
+            - name
+            - email
+            - party_size
+            - reservation_date
+
           properties:
             name:
               type: string
+
             email:
               type: string
               format: email
+
             phone:
               type: string
               nullable: true
+
             party_size:
               type: integer
               minimum: 1
+
             reservation_date:
               type: string
               format: date
+
             reservation_time:
               type: string
               pattern: '^\d{2}:\d{2}$'
               description: Required for table bookings; auto-set from event for event bookings
+
             end_time:
               type: string
               pattern: '^\d{2}:\d{2}$'
               description: Required for table bookings
+
             table_id:
               type: integer
               nullable: true
               description: Required for table bookings; omit for event bookings
+
             event_id:
               type: integer
               nullable: true
               description: Provide for event bookings; omit for table bookings
+
             special_requests:
               type: string
               nullable: true
+
             notes:
               type: string
               nullable: true
 
     ReservationUpdate:
       type: object
-      required: [reservation]
+      required:
+        - reservation
+
       properties:
         reservation:
           type: object
           properties:
+
             party_size:
               type: integer
               minimum: 1
+
             reservation_date:
               type: string
               format: date
+
             reservation_time:
               type: string
               pattern: '^\d{2}:\d{2}$'
+
             end_time:
               type: string
               pattern: '^\d{2}:\d{2}$'
+
             table_id:
               type: integer
+
             special_requests:
               type: string
+
             notes:
               type: string
 
     Reservation:
       type: object
       properties:
+
         confirmation_code:
           type: string
           example: 5HFFE1AR
+
         name:
           type: string
+
         email:
           type: string
           format: email
+
         phone:
           type: string
           nullable: true
+
         party_size:
           type: integer
+
         reservation_date:
           type: string
           format: date
+
         reservation_time:
           type: string
+
         end_time:
           type: string
           nullable: true
+
         special_requests:
           type: string
           nullable: true
+
         notes:
           type: string
           nullable: true
+
         status:
           type: string
           enum: [pending, confirmed, cancelled]
+
         table_id:
           type: integer
           nullable: true
+
         table:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/Table"
+
         event_id:
           type: integer
           nullable: true
+
         event:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/EventSummary"
+
         total_amount:
           type: string
           nullable: true
           description: |
             Table bookings: table price × duration / 2 hrs.
             Event bookings: price_per_person × party_size.
+
         deposit_amount:
           type: string
           nullable: true
+
         total_paid:
           type: string
+
         payments:
           type: array
           items:
             $ref: "#/components/schemas/Payment"
+
         created_at:
           type: string
           format: date-time
@@ -953,11 +1327,14 @@ components:
     CancellationResult:
       type: object
       properties:
+
         reservation:
           $ref: "#/components/schemas/Reservation"
+
         cancellation_fee:
           type: string
           description: 3% of total_amount (zero if cancelled by restaurant)
+
         refund_amount:
           type: string
           description: Amount refunded after deducting the cancellation fee
@@ -967,26 +1344,63 @@ components:
     PaymentTransaction:
       type: object
       properties:
+
         id:
           type: integer
+
         payment_id:
           type: integer
+
         amount:
           type: string
+          description: Transaction amount in INR
+
         currency:
           type: string
           default: INR
+          example: INR
+
         status:
           type: string
-          enum: [pending, processing, completed, failed, refunded]
+          enum:
+            - pending
+            - processing
+            - completed
+            - failed
+            - refunded
+
+        transaction_type:
+          type: string
+          enum:
+            - payment
+            - refund
+          description: Type of transaction
+
+        provider:
+          type: string
+          enum:
+            - stripe
+            - paypal
+          description: Payment provider stored on the transaction
+
+        provider_transaction_id:
+          type: string
+          nullable: true
+          description: |
+            Transaction identifier returned by the payment provider.
+            For Stripe this is the PaymentIntent ID for payment transactions
+            or Refund ID for refund transactions.
+
         completed_at:
           type: string
           format: date-time
           nullable: true
+
         failed_at:
           type: string
           format: date-time
           nullable: true
+
         created_at:
           type: string
           format: date-time
@@ -994,71 +1408,151 @@ components:
     Payment:
       type: object
       properties:
+
         id:
           type: integer
+
         reservation_id:
           type: integer
+
         amount:
           type: string
+          description: Payment amount in INR
+
         currency:
           type: string
           default: INR
+          example: INR
+
         status:
           type: string
-          enum: [pending, processing, completed, failed, refunded]
+          enum:
+            - pending
+            - processing
+            - completed
+            - failed
+            - refunded
+
         payment_type:
           type: string
-          enum: [full, deposit]
+          enum:
+            - full
+            - deposit
+
         paid_at:
           type: string
           format: date-time
           nullable: true
+
         refunded_amount:
           type: string
           nullable: true
+
         refunded_at:
           type: string
           format: date-time
           nullable: true
+
         transactions:
           type: array
           items:
             $ref: "#/components/schemas/PaymentTransaction"
+
         created_at:
           type: string
           format: date-time
+
+    PaymentProviderData:
+      type: object
+      description: |
+        Data returned by the selected payment provider.
+
+      properties:
+
+        provider_transaction_id:
+          type: string
+          description: Payment provider transaction identifier
+          example: "pi_3ABC123"
+
+        client_secret:
+          type: string
+          nullable: true
+          description: |
+            Client secret returned by the payment provider.
+
+            For Stripe this is the PaymentIntent client secret. It may be
+            null when the payment no longer requires client-side payment
+            confirmation.
+
+          example: "pi_3ABC123_secret_ABC123"
+
+        status:
+          type: string
+          description: Payment provider status
+          example: requires_payment_method
+
+    PaymentResponse:
+      type: object
+      description: |
+        Payment response containing the application payment, transaction,
+        and payment-provider information.
+
+      required:
+        - payment
+        - transaction
+        - provider
+
+      properties:
+
+        payment:
+          $ref: "#/components/schemas/Payment"
+
+        transaction:
+          $ref: "#/components/schemas/PaymentTransaction"
+
+        provider:
+          $ref: "#/components/schemas/PaymentProviderData"
 
     # ── Business Hours ────────────────────────────────────────────────────────
 
     BusinessHour:
       type: object
       properties:
+
         id:
           type: integer
+
         day_of_week:
           type: integer
           nullable: true
           description: 0=Sunday … 6=Saturday; null for date-specific entries
+
         specific_date:
           type: string
           format: date
           nullable: true
           description: Set only for date-specific overrides
+
         day_name:
           type: string
           nullable: true
           example: Friday
+
         open:
           type: boolean
+
         open_time:
           type: string
           nullable: true
+
         close_time:
           type: string
           nullable: true
+
         reason:
           type: string
           nullable: true
+
         notes:
           type: string
           nullable: true
@@ -1066,22 +1560,29 @@ components:
     Availability:
       type: object
       properties:
+
         date:
           type: string
           format: date
+
         day_name:
           type: string
+
         open:
           type: boolean
+
         override:
           type: boolean
           description: True when a date-specific override applies
+
         open_time:
           type: string
           description: Present only when open is true
+
         close_time:
           type: string
           description: Present only when open is true
+
         reason:
           type: string
           description: Present when a reason is recorded (e.g. public holiday name)
@@ -1092,30 +1593,40 @@ components:
     GalleryItem:
       type: object
       properties:
+
         id:
           type: integer
+
         title:
           type: string
+
         description:
           type: string
           nullable: true
+
         alt_text:
           type: string
           nullable: true
+
         media_type:
           type: string
           enum: [photo, video]
+
         category:
           type: string
           enum: [interior, atmosphere, food, paella, tapas, events]
+
         video_url:
           type: string
           format: uri
           nullable: true
+
         featured:
           type: boolean
+
         position:
           type: integer
+
         image_url:
           type: string
           format: uri
@@ -1126,23 +1637,31 @@ components:
     TeamMember:
       type: object
       properties:
+
         id:
           type: integer
+
         name:
           type: string
+
         role:
           type: string
+
         bio:
           type: string
           nullable: true
+
         featured:
           type: boolean
+
         position:
           type: integer
+
         instagram_url:
           type: string
           format: uri
           nullable: true
+
         photo_url:
           type: string
           format: uri
