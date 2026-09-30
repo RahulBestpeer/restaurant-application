@@ -13,7 +13,7 @@ Rails.application.routes.draw do
 
       resources :menu_items, only: [ :index, :show ]
 
-      resources :reservations, only: [ :create, :show, :update ], param: :confirmation_code do
+      resources :reservations, only: [ :index, :create, :show, :update ], param: :confirmation_code do
         member do
           delete :cancel
         end

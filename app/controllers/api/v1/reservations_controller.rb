@@ -7,6 +7,14 @@ module Api
         render json: ReservationSerializer.render(reservation)
       end
 
+      def index
+        reservations = Reservation.includes(:table, :event, :payments).order(created_at: :desc)
+
+        render json: reservations.map { |reservation|
+          ReservationSerializer.render(reservation)
+        }
+      end
+
       def create
         result = ::Reservations::CreatorService.new(
           create_params
